@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  syren-api:
+    build: .
+    container_name: syren-api
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://production-llm:11434
+      - PRODUCTION_LLM_MODEL=llama3
+      - CANARY_LLM_MODEL=llama3
+      - RISK_THRESHOLD_LOW=0.4
+      - RISK_THRESHOLD_HIGH=0.7
+      - RATE_LIMIT_PER_MINUTE=30
+      - LOG_LEVEL=INFO
+      - AUDIT_LOG_FILE=logs/audit.jsonl
+    volumes:
+      - ./logs:/app/logs
+      - ./app:/app/app
+    depends_on:
+      production-llm:
+        condition: service_healthy
+    restart: unless-stopped
+
+  production-llm:
+    image: ollama/ollama:latest
+    container_name: syren-production-llm
+    ports:
+      - "11434:11434"
+    volumes:
+      - production-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+    command: ["serve"]
+
+  canary-llm:
+    image: ollama/ollama:latest
+    container_name: syren-canary-llm
+    volumes:
+      - canary-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+    command: ["serve"]
+
+volumes:
+  production-models:
+  canary-models:
